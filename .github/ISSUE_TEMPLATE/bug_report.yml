@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run the `open` action
+        2. Ask the lead to create an agent team with two teammates
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: calls-log
+    attributes:
+      label: calls.log
+      description: Relevant lines from `~/.local/state/herdr-claude-code-agent-teams/*/<pane>-*/calls.log`, especially `unhandled` ones.
+      render: json
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: herdr-version
+    attributes:
+      label: herdr version
+      description: Output of `herdr --version`
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: macOS 26 (arm64)
+    validations:
+      required: true

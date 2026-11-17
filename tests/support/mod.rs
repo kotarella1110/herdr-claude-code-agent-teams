@@ -22,6 +22,9 @@ case "$1 $2" in
     printf '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1"},{"pane_id":"w1:p2","tab_id":"w1:t1"},{"pane_id":"w1:p8","tab_id":"w1:t1"},{"pane_id":"w1:p7","tab_id":"w1:t2"}]}}\n' ;;
   "pane read")
     printf '{"result":{"text":"screen of %s"}}\n' "$3" ;;
+  "pane report-metadata")
+    if [ -n "$FAKE_HERDR_FAIL_REPORT" ]; then echo "report failed" >&2; exit 1; fi
+    printf '{"result":{}}\n' ;;
   "pane run")
     if [ -n "$FAKE_HERDR_FAIL_RUN" ]; then echo "pane run failed" >&2; exit 1; fi
     printf '{"result":{}}\n' ;;

@@ -3,6 +3,7 @@ mod herdr;
 mod launcher;
 mod route;
 mod shell;
+mod sidebar;
 mod state;
 mod tmux;
 

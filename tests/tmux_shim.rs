@@ -75,6 +75,43 @@ fn respawn_pane_runs_a_private_self_deleting_script_that_closes_the_pane_on_succ
 }
 
 #[test]
+fn respawn_pane_shows_the_teammate_name_and_model_in_the_herdr_sidebar() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&[
+        "respawn-pane",
+        "-k",
+        "-t",
+        "%1",
+        "--",
+        "cd /work && env CLAUDECODE=1 claude --agent-id api@auth --agent-name api --team-name auth --model haiku",
+    ]);
+
+    assert!(output.status.success(), "{output:?}");
+    let report =
+        sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane report-metadata")).unwrap();
+    assert_eq!(
+        report,
+        "pane report-metadata w1:p2 --source kotarella1110.claude-code-agent-teams --agent claude \
+         --display-agent api --token teammate=api --token team=auth --token model=haiku"
+    );
+}
+
+#[test]
+fn respawn_pane_still_starts_the_teammate_when_herdr_rejects_the_sidebar_report() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux_with_env(
+        &["respawn-pane", "-k", "-t", "%1", "--", "cd /work && claude --agent-name api"],
+        &[("FAKE_HERDR_FAIL_REPORT", "1")],
+    );
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(sandbox.herdr_calls().iter().any(|call| call.starts_with("pane run w1:p2 ")));
+    assert!(sandbox.calls_log().contains(r#""verb":"report-metadata""#), "{}", sandbox.calls_log());
+}
+
+#[test]
 fn respawn_pane_starts_a_teammate_named_after_a_nearby_repository_in_that_repository() {
     let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
     let lead = sandbox.root.join("work/lead");

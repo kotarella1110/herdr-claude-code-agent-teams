@@ -75,6 +75,80 @@ fn respawn_pane_runs_a_private_self_deleting_script_that_closes_the_pane_on_succ
 }
 
 #[test]
+fn respawn_pane_starts_a_teammate_named_after_a_nearby_repository_in_that_repository() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+    let lead = sandbox.root.join("work/lead");
+    fs::create_dir_all(&lead).unwrap();
+    fs::create_dir_all(sandbox.root.join("work/api/.git")).unwrap();
+    let launch = |dir: &std::path::Path| {
+        format!("cd {} && env A=1 claude --agent-name api --team-name t", dir.display())
+    };
+
+    let output = sandbox.tmux(&["respawn-pane", "-k", "-t", "%1", "--", &launch(&lead)]);
+
+    assert!(output.status.success(), "{output:?}");
+    let run = sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane run w1:p2 ")).unwrap();
+    let body = fs::read_to_string(run.trim_start_matches("pane run w1:p2 sh ")).unwrap();
+    let api = fs::canonicalize(sandbox.root.join("work/api")).unwrap();
+    assert!(body.contains(&launch(&api)), "{body}");
+    assert!(sandbox.calls_log().contains("api -> "), "{}", sandbox.calls_log());
+}
+
+#[test]
+fn respawn_pane_starts_a_teammate_where_the_lead_registered_it() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+    let target = sandbox.root.join("anywhere/api");
+    fs::create_dir_all(&target).unwrap();
+    let target = fs::canonicalize(&target).unwrap();
+
+    let registered = sandbox.route(&["api", target.to_str().unwrap()]);
+    let output =
+        sandbox.tmux(&["respawn-pane", "-k", "-t", "%1", "--", "cd /nowhere && env claude --agent-name api"]);
+
+    assert!(registered.status.success(), "{registered:?}");
+    assert_eq!(stdout(&registered), format!("teammate api will start in {}", target.display()));
+    assert!(output.status.success(), "{output:?}");
+    let run = sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane run w1:p2 ")).unwrap();
+    let body = fs::read_to_string(run.trim_start_matches("pane run w1:p2 sh ")).unwrap();
+    assert!(body.contains(&format!("cd {} && env claude --agent-name api", target.display())), "{body}");
+    assert!(sandbox.calls_log().contains("(registered by the lead)"), "{}", sandbox.calls_log());
+}
+
+#[test]
+fn route_resolves_a_relative_directory_and_wins_over_a_nearby_repository() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+    let lead = sandbox.root.join("work/lead");
+    fs::create_dir_all(lead.join("api/.git")).unwrap();
+    fs::create_dir_all(sandbox.root.join("other/api")).unwrap();
+    let other = fs::canonicalize(sandbox.root.join("other/api")).unwrap();
+
+    let registered = sandbox.route_in(&sandbox.root, &["api", "other/api"]);
+    let line = format!("cd {} && env claude --agent-name api", lead.display());
+    let output = sandbox.tmux(&["respawn-pane", "-k", "-t", "%1", "--", &line]);
+
+    assert!(registered.status.success(), "{registered:?}");
+    assert!(output.status.success(), "{output:?}");
+    let run = sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane run w1:p2 ")).unwrap();
+    let body = fs::read_to_string(run.trim_start_matches("pane run w1:p2 sh ")).unwrap();
+    assert!(body.contains(&format!("cd {} && env claude --agent-name api", other.display())), "{body}");
+}
+
+#[test]
+fn route_refuses_bad_names_missing_directories_and_callers_outside_a_lead() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+    let dir = sandbox.root.to_str().unwrap();
+
+    let bad_name = sandbox.route(&["../api", dir]);
+    let missing = sandbox.route(&["api", "/no/such/dir"]);
+    let outside = sandbox.launcher_with_args(&["route", "api", dir], &[]);
+
+    assert!(stderr(&bad_name).contains("is not a teammate name"), "{bad_name:?}");
+    assert!(stderr(&missing).contains("is not an existing directory"), "{missing:?}");
+    assert!(stderr(&outside).contains("run this from the Bash tool of a team lead"), "{outside:?}");
+    assert_eq!(sandbox.idmap()["routes"], serde_json::Value::Null);
+}
+
+#[test]
 fn split_window_closes_the_new_pane_when_the_command_cannot_start() {
     let sandbox = Sandbox::with_idmap(LEADER_ONLY);
 

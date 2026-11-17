@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Result, anyhow, bail};
 
 use crate::herdr::{self, HerdrError};
+use crate::route;
 use crate::shell;
 use crate::state::{self, State};
 
@@ -343,7 +344,7 @@ fn split_window(state: &State, args: &[String]) -> Result<String> {
 
     let finish = || -> Result<String> {
         if !positional.is_empty() && positional != ["cat"] {
-            run_in_pane(state, &new_pane, &positional)?;
+            run_in_pane(state, &new_pane, &command_line(&positional))?;
         }
         if flags.has('P') {
             return Ok(expand(flags.value('F').unwrap_or("#{pane_id}"), &pane_fields(state, &new_pane)?));
@@ -356,13 +357,16 @@ fn split_window(state: &State, args: &[String]) -> Result<String> {
     })
 }
 
-fn run_in_pane(state: &State, herdr_pane: &str, command: &[String]) -> Result<()> {
-    let line = if let [single] = command { single.clone() } else { shell::join(command) };
+fn command_line(command: &[String]) -> String {
+    if let [single] = command { single.clone() } else { shell::join(command) }
+}
+
+fn run_in_pane(state: &State, herdr_pane: &str, line: &str) -> Result<()> {
     let millis = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_millis());
     let script = state.dir().join(format!("run-{}-{millis}.sh", herdr_pane.replace(':', "_")));
     let body = format!(
         "rm -f -- \"$0\"\nsh -c {}\nstatus=$?\nif [ \"$status\" -eq 0 ]; then {} pane close {}; fi\nexit \"$status\"\n",
-        shell::quote(&line),
+        shell::quote(line),
         shell::quote(&herdr::bin()),
         shell::quote(herdr_pane),
     );
@@ -376,7 +380,22 @@ fn run_in_pane(state: &State, herdr_pane: &str, command: &[String]) -> Result<()
 
 fn respawn_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, positional) = parse(args, "c:e:kt:")?;
-    run_in_pane(state, &resolve_team_pane(state, flags.value('t'))?, &positional)?;
+    let herdr_pane = resolve_team_pane(state, flags.value('t'))?;
+    let line = command_line(&positional);
+    let registered = state.with_idmap(|idmap| idmap.routes.clone())?;
+    let line = match route::reroute(&line, &registered) {
+        Some((rerouted, route)) => {
+            state.log(
+                "route",
+                flags.value('t'),
+                0,
+                &format!("{} -> {} ({})", route.name, route.dir.display(), route.rule),
+            );
+            rerouted
+        }
+        None => line,
+    };
+    run_in_pane(state, &herdr_pane, &line)?;
     Ok(String::new())
 }
 

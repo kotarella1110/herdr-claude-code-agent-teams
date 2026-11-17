@@ -75,8 +75,8 @@ fn prepare(pane_id: &str) -> Result<State> {
     remove_finished_leads(&session_dir);
 
     let state = State::new(session_dir.join(format!("{}-{}", pane_id.replace(':', "_"), process::id())));
-    let tab_id = herdr::pane(pane_id)?.tab_id;
-    state.reset(pane_id, &tab_id)?;
+    let pane = herdr::pane(pane_id)?;
+    state.reset(pane_id, &pane.tab_id, pane.terminal_id.as_deref())?;
 
     let bin = state.dir().join("bin");
     state::create_private_dir(&bin)?;

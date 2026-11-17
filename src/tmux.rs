@@ -260,28 +260,52 @@ fn session_fields() -> Fields {
     HashMap::from([("session_name", "herdr".to_owned())])
 }
 
-fn resolve_pane(state: &State, target: Option<&str>, allow_window: bool) -> Result<String> {
+fn resolve_pane(state: &State, target: Option<&str>, allow_window: bool) -> Result<herdr::Pane> {
     let Some(raw) = target else {
-        return state
-            .with_idmap(|idmap| idmap.leader().map(str::to_owned))?
-            .ok_or_else(|| anyhow!("no team lead"));
+        return locate(state, "%0")?.ok_or_else(|| anyhow!("no team lead"));
     };
-    state
-        .with_idmap(|idmap| match parse_target(raw) {
-            Target::Pane(pane) => idmap.map.get(pane).cloned(),
-            Target::Window(window) if allow_window => {
-                let leader_tab = idmap.map.get("@0");
-                let tab = if window.is_empty() { leader_tab } else { idmap.map.get(window) };
-                (tab.is_some() && tab == leader_tab).then(|| idmap.leader().map(str::to_owned)).flatten()
-            }
-            Target::Window(_) => None,
-        })?
-        .ok_or_else(|| anyhow!("can't find pane: {raw}"))
+    let tmux_id = state.with_idmap(|idmap| match parse_target(raw) {
+        Target::Pane(pane) => Some(pane.to_owned()),
+        Target::Window(window) if allow_window => {
+            let leader_tab = idmap.map.get("@0");
+            let tab = if window.is_empty() { leader_tab } else { idmap.map.get(window) };
+            (tab.is_some() && tab == leader_tab).then(|| "%0".to_owned())
+        }
+        Target::Window(_) => None,
+    })?;
+    match tmux_id {
+        Some(tmux_id) => locate(state, &tmux_id)?,
+        None => None,
+    }
+    .ok_or_else(|| anyhow!("can't find pane: {raw}"))
 }
 
-fn resolve_team_pane(state: &State, target: Option<&str>) -> Result<String> {
+fn locate(state: &State, tmux_id: &str) -> Result<Option<herdr::Pane>> {
+    let (pane_id, terminal_id) =
+        state.with_idmap(|idmap| (idmap.map.get(tmux_id).cloned(), idmap.terminals.get(tmux_id).cloned()))?;
+    let Some(pane_id) = pane_id else {
+        return Ok(None);
+    };
+    let found = match (&terminal_id, herdr::pane(&pane_id)) {
+        (None, fetched) => fetched?,
+        (Some(terminal), Ok(pane)) if pane.terminal_id.as_ref() == Some(terminal) => pane,
+        (Some(terminal), _) => {
+            match herdr::all_panes()?.into_iter().find(|pane| pane.terminal_id.as_ref() == Some(terminal)) {
+                Some(pane) => pane,
+                None => return Ok(None),
+            }
+        }
+    };
+    if found.id != pane_id {
+        state.with_idmap(|idmap| idmap.relocate(tmux_id, &found.id))?;
+        state.log("relocate", Some(tmux_id), 0, &format!("{pane_id} -> {}", found.id));
+    }
+    Ok(Some(found))
+}
+
+fn resolve_team_pane(state: &State, target: Option<&str>) -> Result<herdr::Pane> {
     let pane = resolve_pane(state, target, false)?;
-    if state.with_idmap(|idmap| idmap.leader() == Some(pane.as_str()))? {
+    if state.with_idmap(|idmap| idmap.leader() == Some(pane.id.as_str()))? {
         bail!("refusing to act on the team lead pane");
     }
     Ok(pane)
@@ -290,7 +314,7 @@ fn resolve_team_pane(state: &State, target: Option<&str>) -> Result<String> {
 fn resolve_tab(state: &State, target: Option<&str>) -> Result<String> {
     let raw = target.unwrap_or("");
     match parse_target(raw) {
-        Target::Pane(_) => Ok(herdr::pane(&resolve_pane(state, target, false)?)?.tab_id),
+        Target::Pane(_) => Ok(resolve_pane(state, target, false)?.tab_id),
         Target::Window(window) => {
             let window = if window.is_empty() { "@0" } else { window };
             state
@@ -300,11 +324,10 @@ fn resolve_tab(state: &State, target: Option<&str>) -> Result<String> {
     }
 }
 
-fn pane_fields(state: &State, herdr_pane: &str) -> Result<Fields> {
-    let pane = herdr::pane(herdr_pane)?;
+fn pane_fields(state: &State, pane: herdr::Pane) -> Result<Fields> {
     let (pane_id, window_id, title) = state.with_idmap(|idmap| {
         (
-            idmap.tmux_id_for(&pane.id, '%'),
+            idmap.pane_alias(&pane.id, pane.terminal_id.as_deref()),
             idmap.tmux_id_for(&pane.tab_id, '@'),
             idmap.titles.get(&pane.id).cloned().unwrap_or_default(),
         )
@@ -327,7 +350,7 @@ fn pane_fields(state: &State, herdr_pane: &str) -> Result<Fields> {
 
 fn split_window(state: &State, args: &[String]) -> Result<String> {
     let (flags, positional) = parse(args, "bc:de:fF:hIl:p:Pt:vZ")?;
-    let source = resolve_pane(state, flags.value('t'), true)?;
+    let source = resolve_pane(state, flags.value('t'), true)?.id;
     let direction = if flags.has('h') { "right" } else { "down" };
     let mut command: Vec<String> =
         ["pane", "split", "--pane", &source, "--direction", direction, "--no-focus"]
@@ -339,15 +362,19 @@ fn split_window(state: &State, args: &[String]) -> Result<String> {
     if let Some(cwd) = flags.value('c') {
         command.extend(["--cwd".to_owned(), cwd.to_owned()]);
     }
-    let new_pane = herdr::split(&command)?.id;
-    state.with_idmap(|idmap| idmap.tmux_id_for(&new_pane, '%'))?;
+    let new_pane = herdr::split(&command)?;
+    state.with_idmap(|idmap| idmap.pane_alias(&new_pane.id, new_pane.terminal_id.as_deref()))?;
+    let new_pane = new_pane.id;
 
     let finish = || -> Result<String> {
         if !positional.is_empty() && positional != ["cat"] {
             run_in_pane(state, &new_pane, &command_line(&positional))?;
         }
         if flags.has('P') {
-            return Ok(expand(flags.value('F').unwrap_or("#{pane_id}"), &pane_fields(state, &new_pane)?));
+            return Ok(expand(
+                flags.value('F').unwrap_or("#{pane_id}"),
+                &pane_fields(state, herdr::pane(&new_pane)?)?,
+            ));
         }
         Ok(String::new())
     };
@@ -380,7 +407,7 @@ fn run_in_pane(state: &State, herdr_pane: &str, line: &str) -> Result<()> {
 
 fn respawn_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, positional) = parse(args, "c:e:kt:")?;
-    let herdr_pane = resolve_team_pane(state, flags.value('t'))?;
+    let herdr_pane = resolve_team_pane(state, flags.value('t'))?.id;
     let line = command_line(&positional);
     let registered = state.with_idmap(|idmap| idmap.routes.clone())?;
     let line = match route::reroute(&line, &registered) {
@@ -401,7 +428,17 @@ fn respawn_pane(state: &State, args: &[String]) -> Result<String> {
 
 fn kill_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, _) = parse(args, "t:")?;
-    let herdr_pane = resolve_team_pane(state, flags.value('t'))?;
+    let herdr_pane = match resolve_team_pane(state, flags.value('t')) {
+        Ok(pane) => pane.id,
+        Err(error) => {
+            if let Some(Target::Pane(tmux_id)) = flags.value('t').map(parse_target)
+                && tmux_id != "%0"
+            {
+                state.with_idmap(|idmap| idmap.forget_tmux(tmux_id))?;
+            }
+            return Err(error);
+        }
+    };
     let closed = herdr::call(&["pane", "close", &herdr_pane]);
     state.with_idmap(|idmap| idmap.forget(&herdr_pane))?;
     closed.map(|_| String::new())
@@ -410,7 +447,7 @@ fn kill_pane(state: &State, args: &[String]) -> Result<String> {
 fn select_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, _) = parse(args, "DdegLlMmP:RT:t:UZ")?;
     if let Some(title) = flags.value('T') {
-        let herdr_pane = resolve_pane(state, flags.value('t'), true)?;
+        let herdr_pane = resolve_pane(state, flags.value('t'), true)?.id;
         herdr::call(&["pane", "rename", &herdr_pane, title])?;
         state.with_idmap(|idmap| idmap.titles.insert(herdr_pane, title.to_owned()))?;
     }
@@ -421,13 +458,23 @@ fn list_panes(state: &State, args: &[String]) -> Result<String> {
     let (flags, _) = parse(args, "aF:f:O:rst:")?;
     let tab = resolve_tab(state, flags.value('t'))?;
     let workspace = tab.split(':').next().unwrap_or(&tab);
-    let owned: Vec<String> =
-        state.with_idmap(|idmap| idmap.owned_panes().into_iter().map(str::to_owned).collect())?;
+    let panes = herdr::panes_in_workspace(workspace)?;
+    let owned: Vec<bool> = state.with_idmap(|idmap| {
+        let owned_panes = idmap.owned_panes();
+        panes
+            .iter()
+            .map(|pane| {
+                owned_panes.contains(pane.id.as_str())
+                    || pane.terminal_id.as_deref().is_some_and(|terminal| idmap.owns_terminal(terminal))
+            })
+            .collect()
+    })?;
     let format = flags.value('F').unwrap_or("#{pane_id}");
-    herdr::panes_in_workspace(workspace)?
+    panes
         .into_iter()
-        .filter(|pane| pane.tab_id == tab && owned.contains(&pane.id))
-        .map(|pane| Ok(expand(format, &pane_fields(state, &pane.id)?)))
+        .zip(owned)
+        .filter(|(pane, owned)| *owned && pane.tab_id == tab)
+        .map(|(pane, _)| Ok(expand(format, &pane_fields(state, herdr::pane(&pane.id)?)?)))
         .collect::<Result<Vec<_>>>()
         .map(|lines| lines.join("\n"))
 }
@@ -441,13 +488,13 @@ fn display_message(state: &State, args: &[String]) -> Result<String> {
     let fields = match flags.value('t').map(parse_target) {
         Some(Target::Window(window)) => {
             resolve_tab(state, flags.value('t'))?;
-            let mut fields = pane_fields(state, &resolve_pane(state, None, false)?)?;
+            let mut fields = pane_fields(state, resolve_pane(state, None, false)?)?;
             if !window.is_empty() {
                 fields.insert("window_id", window.to_owned());
             }
             fields
         }
-        _ => pane_fields(state, &resolve_pane(state, flags.value('t'), false)?)?,
+        _ => pane_fields(state, resolve_pane(state, flags.value('t'), false)?)?,
     };
     Ok(expand(format, &fields))
 }
@@ -463,7 +510,7 @@ fn show_options(args: &[String]) -> Result<String> {
 
 fn capture_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, _) = parse(args, "ab:CeE:JMNpPqS:Tt:")?;
-    let herdr_pane = resolve_pane(state, flags.value('t'), false)?;
+    let herdr_pane = resolve_pane(state, flags.value('t'), false)?.id;
     let response = herdr::call(&["pane", "read", &herdr_pane, "--source", "visible"])?;
     if !flags.has('p') {
         return Ok(String::new());
@@ -473,7 +520,7 @@ fn capture_pane(state: &State, args: &[String]) -> Result<String> {
 
 fn send_keys(state: &State, args: &[String]) -> Result<String> {
     let (flags, positional) = parse(args, "c:FHKlMN:Rt:X")?;
-    let herdr_pane = resolve_team_pane(state, flags.value('t'))?;
+    let herdr_pane = resolve_team_pane(state, flags.value('t'))?.id;
     if flags.has('l') {
         herdr::call(&["pane", "send-text", &herdr_pane, &positional.join(" ")])?;
         return Ok(String::new());

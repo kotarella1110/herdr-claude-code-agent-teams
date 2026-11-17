@@ -106,7 +106,7 @@ sequenceDiagram
     shim->>herdr: pane close w1:p2
 ```
 
-tmux のペイン ID（`%1` など）と herdr のペイン ID の対応は `idmap.json` に保存する。teammate の起動コマンドは本人だけが読めるスクリプトに書き、スクリプトは実行開始時に自分を削除する。teammate が正常に終了するとペインは閉じる。
+tmux のペイン ID（`%1` など）と herdr のペインの対応は `idmap.json` に保存する。herdr はペインを別のワークスペースに移すとペイン ID を付け直すため、herdr のターミナル ID も記録しておき、移動した teammate の tmux のペイン ID とタイトルが変わらないようにしている。リーダー自身のペインを別のワークスペースに移すことには対応していない（teammate は元の場所に残り、Claude Code は自分のウィンドウを見失う）。teammate の起動コマンドは本人だけが読めるスクリプトに書き、スクリプトは実行開始時に自分を削除する。teammate が正常に終了するとペインは閉じる。
 
 | tmux | herdr |
 |---|---|

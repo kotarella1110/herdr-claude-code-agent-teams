@@ -41,6 +41,7 @@ command = "kotarella1110.claude-code-agent-teams.open"
 | `kotarella1110.claude-code-agent-teams.open` | 選択中のペインを右に分割し、そこでリーダーの Claude を起動する |
 | `kotarella1110.claude-code-agent-teams.here` | 選択中のペインでリーダーの Claude を起動する。シェルが入力待ちのペインでなければ起動しない |
 | `kotarella1110.claude-code-agent-teams.configure` | `claude` に渡す引数を、ポップアップのエディタで開く |
+| `kotarella1110.claude-code-agent-teams.doctor` | 設定を確かめ、動いているリーダーをポップアップに一覧する |
 
 起動したリーダーに「エージェントチームを作って、teammate は 2 人まで」のように頼むと、teammate がリーダーの右側に並ぶ。名前を付けないと Claude Code は手伝い役をペインを持たない普通のサブエージェントとして動かすので、プラグインはリーダーに短いシステムプロンプトを付け、手伝い役を名前付きの teammate として起動させる。teammate は作業を終えても続きの依頼を受けられるようにペインで待機し、リーダーが teammate を止めるとペインは閉じる。システムプロンプトで、用が済んだ teammate を止めるようリーダーに伝えている（「チームを片付けて」と頼んでもよい）。teammate が失敗したときは、原因を読めるようペインを残す。
 
@@ -135,6 +136,8 @@ tmux のペイン ID（`%1` など）と herdr のペイン ID の対応は `idm
 - エージェントチームは Claude Code の実験機能なので、更新で tmux の使い方が変わると動かなくなることがある
 
 ## 動きを調べる
+
+まず `doctor` アクションを使う。プラグインのディレクトリで `bin/herdr-claude-code-agent-teams doctor` を実行してもよい。herdr と Claude Code のバージョン、herdr の Claude Code 連携、ロケール、状態ディレクトリを確かめ、動いているリーダーごとに teammate のペイン、登録した行き先、対応できなかった tmux 命令を一覧する。確認に失敗した項目があると終了コード 1 で終わる。ポップアップは herdr サーバーの環境で動き、リーダーはシェルの環境で動くので、`claude`、ロケール、`XDG_STATE_HOME` をシェルの起動ファイルで設定している場合は、ペインでコマンドを実行する。herdr の中では、今の herdr サーバーのリーダーだけを一覧する。
 
 リーダーごとに、受けた tmux 命令の種類・対象・終了コード・エラーを記録する。コマンドライン、打ち込んだ文字、画面の内容は記録しない。
 

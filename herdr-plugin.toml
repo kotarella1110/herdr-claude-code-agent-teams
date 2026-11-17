@@ -26,6 +26,12 @@ title = "agent-teams: edit the arguments passed to claude"
 contexts = ["pane", "workspace"]
 command = ["bin/herdr-claude-code-agent-teams", "action"]
 
+[[actions]]
+id = "doctor"
+title = "agent-teams: check the setup"
+contexts = ["pane", "workspace"]
+command = ["bin/herdr-claude-code-agent-teams", "action"]
+
 [[panes]]
 id = "configure"
 title = "agent-teams: claude arguments"
@@ -33,3 +39,11 @@ placement = "popup"
 width = "80%"
 height = "60%"
 command = ["bin/herdr-claude-code-agent-teams", "edit-config"]
+
+[[panes]]
+id = "doctor"
+title = "agent-teams: doctor"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["bin/herdr-claude-code-agent-teams", "doctor", "--wait"]

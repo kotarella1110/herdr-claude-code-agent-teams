@@ -44,18 +44,18 @@ pub(crate) struct ForegroundProcess {
 }
 
 #[derive(Debug)]
-pub(crate) struct HerdrError {
+pub(crate) struct CommandError {
     pub(crate) command: String,
     detail: String,
 }
 
-impl fmt::Display for HerdrError {
+impl fmt::Display for CommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}: {}", self.command, self.detail)
     }
 }
 
-impl std::error::Error for HerdrError {}
+impl std::error::Error for CommandError {}
 
 pub(crate) fn bin() -> String {
     env::var("HERDR_BIN_PATH").ok().filter(|path| !path.is_empty()).unwrap_or_else(|| "herdr".into())
@@ -63,10 +63,19 @@ pub(crate) fn bin() -> String {
 
 pub(crate) fn call<S: AsRef<str>>(args: &[S]) -> Result<Value> {
     let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
-    let describe = || format!("herdr {}", args.join(" "));
+    let stdout = output("herdr", &bin(), &args)?;
+    if stdout.trim_start().starts_with('{') {
+        serde_json::from_str(&stdout).with_context(|| format!("herdr {}", args.join(" ")))
+    } else {
+        Ok(Value::Null)
+    }
+}
 
-    let mut child = Command::new(bin())
-        .args(&args)
+pub(crate) fn output(name: &str, program: &str, args: &[&str]) -> Result<String> {
+    let describe = || format!("{name} {}", args.join(" "));
+
+    let mut child = Command::new(program)
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -95,13 +104,9 @@ pub(crate) fn call<S: AsRef<str>>(args: &[S]) -> Result<Value> {
 
     if !status.success() {
         let detail = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
-        return Err(HerdrError { command: describe(), detail: detail.to_owned() }.into());
+        return Err(CommandError { command: describe(), detail: detail.to_owned() }.into());
     }
-    if stdout.trim_start().starts_with('{') {
-        serde_json::from_str(&stdout).with_context(describe)
-    } else {
-        Ok(Value::Null)
-    }
+    Ok(stdout)
 }
 
 fn read_in_background(pipe: Option<impl Read + Send + 'static>) -> Receiver<String> {

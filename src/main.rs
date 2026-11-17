@@ -1,6 +1,7 @@
 mod action;
 mod herdr;
 mod launcher;
+mod route;
 mod shell;
 mod state;
 mod tmux;

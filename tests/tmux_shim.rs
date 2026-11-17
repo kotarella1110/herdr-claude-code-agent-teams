@@ -75,6 +75,26 @@ fn respawn_pane_runs_a_private_self_deleting_script_that_closes_the_pane_on_succ
 }
 
 #[test]
+fn respawn_pane_starts_a_teammate_named_after_a_nearby_repository_in_that_repository() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+    let lead = sandbox.root.join("work/lead");
+    fs::create_dir_all(&lead).unwrap();
+    fs::create_dir_all(sandbox.root.join("work/api/.git")).unwrap();
+    let launch = |dir: &std::path::Path| {
+        format!("cd {} && env A=1 claude --agent-name api --team-name t", dir.display())
+    };
+
+    let output = sandbox.tmux(&["respawn-pane", "-k", "-t", "%1", "--", &launch(&lead)]);
+
+    assert!(output.status.success(), "{output:?}");
+    let run = sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane run w1:p2 ")).unwrap();
+    let body = fs::read_to_string(run.trim_start_matches("pane run w1:p2 sh ")).unwrap();
+    let api = fs::canonicalize(sandbox.root.join("work/api")).unwrap();
+    assert!(body.contains(&launch(&api)), "{body}");
+    assert!(sandbox.calls_log().contains("api -> "), "{}", sandbox.calls_log());
+}
+
+#[test]
 fn split_window_closes_the_new_pane_when_the_command_cannot_start() {
     let sandbox = Sandbox::with_idmap(LEADER_ONLY);
 

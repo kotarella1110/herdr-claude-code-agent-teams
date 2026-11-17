@@ -79,7 +79,7 @@ fn a_state_path_with_a_comma_is_refused() {
 }
 
 #[test]
-fn the_lead_learns_how_to_choose_where_a_teammate_starts() {
+fn the_lead_learns_to_spawn_named_teammates_and_where_they_start() {
     let sandbox = Sandbox::new();
     std::fs::create_dir_all(sandbox.root.join("work/api/.git")).unwrap();
     let envs = [("HERDR_ENV", "1"), ("HERDR_PANE_ID", "w1:p1")];
@@ -89,6 +89,9 @@ fn the_lead_learns_how_to_choose_where_a_teammate_starts() {
     let own_file = stdout(&sandbox.launcher_with_args(&["--append-system-prompt-file", "/tmp/mine"], &envs));
 
     let args = value(&hinted, "args");
+    assert!(args.contains("--append-system-prompt You can lead an agent team"), "{args}");
+    assert!(args.contains("spawn each teammate by calling the Agent tool with a name."), "{args}");
+    assert!(args.contains("stop it to close its pane."), "{args}");
     assert!(args.contains(" route <teammate-name> <directory>`"), "{args}");
     assert!(args.contains("without that step: api."), "{args}");
     assert_eq!(value(&own, "args"), r#"--settings {"teammateMode":"tmux"} --append-system-prompt mine"#);
@@ -96,4 +99,16 @@ fn the_lead_learns_how_to_choose_where_a_teammate_starts() {
         value(&own_file, "args"),
         r#"--settings {"teammateMode":"tmux"} --append-system-prompt-file /tmp/mine"#
     );
+}
+
+#[test]
+fn the_lead_still_learns_to_name_teammates_when_its_directory_is_gone() {
+    let sandbox = Sandbox::new();
+
+    let lines =
+        stdout(&sandbox.launcher_in_a_deleted_directory(&[("HERDR_ENV", "1"), ("HERDR_PANE_ID", "w1:p1")]));
+
+    let args = value(&lines, "args");
+    assert!(args.contains("--append-system-prompt You can lead an agent team"), "{lines}");
+    assert!(!args.contains(" route <teammate-name>"), "{args}");
 }

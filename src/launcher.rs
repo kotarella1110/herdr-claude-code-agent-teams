@@ -18,6 +18,12 @@ use crate::state::{self, State};
 
 const TEAMMATE_MODE: &str = r#"{"teammateMode":"tmux"}"#;
 const APPEND_SYSTEM_PROMPT: &str = "--append-system-prompt";
+const TEAM_PROMPT: &str = "You can lead an agent team whose teammates run in their own herdr panes. \
+    When the user asks for an agent team or teammates, spawn each teammate by calling the Agent tool with a name. \
+    An Agent call without a name starts an ordinary subagent that gets no pane and is not part of the team; \
+    that is still fine for your own quick lookups, but not for a teammate. \
+    A teammate stays idle in its pane after finishing a task, so once you have its result \
+    and nothing left for it to do, stop it to close its pane.";
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let error = match herdr_pane() {
@@ -122,15 +128,17 @@ fn tmux_env(state: &State) -> OsString {
     value
 }
 
-fn routing_hint(args: &[String]) -> Vec<String> {
+fn lead_prompt(args: &[String]) -> Vec<String> {
     if args.iter().any(|arg| arg.starts_with(APPEND_SYSTEM_PROMPT)) {
         return Vec::new();
     }
-    let (Ok(lead_dir), Ok(launcher)) = (env::current_dir(), env::current_exe().and_then(fs::canonicalize))
-    else {
-        return Vec::new();
-    };
-    vec![APPEND_SYSTEM_PROMPT.to_owned(), route::hint(&lead_dir, &launcher)]
+    let mut prompt = TEAM_PROMPT.to_owned();
+    if let (Ok(lead_dir), Ok(launcher)) = (env::current_dir(), env::current_exe().and_then(fs::canonicalize))
+    {
+        prompt.push(' ');
+        prompt.push_str(&route::hint(&lead_dir, &launcher));
+    }
+    vec![APPEND_SYSTEM_PROMPT.to_owned(), prompt]
 }
 
 fn exec_team_lead(state: &State, args: &[String]) -> anyhow::Error {
@@ -141,7 +149,7 @@ fn exec_team_lead(state: &State, args: &[String]) -> anyhow::Error {
     let error = Command::new("claude")
         .arg("--settings")
         .arg(TEAMMATE_MODE)
-        .args(routing_hint(args))
+        .args(lead_prompt(args))
         .args(args)
         .env("PATH", path)
         .env("TMUX", tmux_env(state))

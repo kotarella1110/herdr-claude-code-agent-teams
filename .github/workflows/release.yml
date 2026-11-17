@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'release' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Check that the version is not released yet
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml | head -n 1)"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::v$version is already released"
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    needs: plan
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+    env:
+      BIN: herdr-claude-code-agent-teams
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install toolchain and target
+        run: |
+          rustup toolchain install
+          rustup target add "$TARGET"
+
+      - name: Install musl-tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package
+        run: |
+          archive="$BIN-$TARGET"
+          tar -czf "$archive.tar.gz" -C "target/$TARGET/release" "$BIN"
+          shasum -a 256 "$archive.tar.gz" > "$archive.sha256"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ env.BIN }}-${{ matrix.target }}.tar.gz
+            ${{ env.BIN }}-${{ matrix.target }}.sha256
+          if-no-files-found: error
+
+  attest:
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: artifacts/*
+
+  release:
+    needs: [plan, attest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Install knope from crates.io
+        run: |
+          rustup toolchain install
+          cargo install knope --version 0.24.0 --locked
+
+      - name: Publish the GitHub release
+        run: knope release --verbose
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

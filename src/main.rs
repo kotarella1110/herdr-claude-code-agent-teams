@@ -1,4 +1,5 @@
 mod herdr;
+mod launcher;
 mod shell;
 mod state;
 mod tmux;
@@ -15,5 +16,5 @@ fn main() -> ExitCode {
     if Path::new(&argv0).file_name().is_some_and(|name| name == "tmux") {
         return tmux::run(&rest);
     }
-    ExitCode::FAILURE
+    launcher::run(&rest)
 }

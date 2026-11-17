@@ -50,6 +50,18 @@ Run the `configure` action (or bind it to a key) and write the arguments on one 
 
 Settings that Claude Code reads itself, such as `model` in `~/.claude/settings.json`, apply as usual, so you only need this for arguments you want just for team leads.
 
+### Teammates in other repositories
+
+Claude Code starts every teammate in the lead's directory, so a teammate never loads another repository's `CLAUDE.md`, skills or settings. This plugin moves a teammate into another directory, decided by its name when it starts:
+
+1. A directory the lead registered for that name. Before spawning the teammate, the lead runs `<plugin binary> route <teammate-name> <directory>` with its Bash tool; the lead is given the binary's full path, since it is not on `PATH`. The registration lasts as long as the lead.
+2. A git repository with that name inside the lead's directory.
+3. A git repository with that name next to the lead's directory.
+
+When Claude Code renames a teammate to avoid a clash, such as `api-2`, the name without the suffix is used. Symbolic links are resolved first. Any other teammate starts in the lead's directory as before. A teammate whose role name happens to match a nearby repository, for example a reviewer called `frontend` next to a `frontend` submodule, is moved there too; the lead is shown those names so it can avoid them. Nothing has to be set up in advance: when the lead starts, it is told how to register a directory and which nearby repositories it can use by name, so asking "work across api and web" is enough. To always use the same place for a repository, write it in `CLAUDE.md`, for example "api lives in ~/src/my-api", and the lead registers it. If you pass your own `--append-system-prompt` or `--append-system-prompt-file`, the plugin adds nothing, so the lead only uses nearby repositories unless told about `route`.
+
+The first time Claude Code opens a directory, the teammate pane asks whether you trust the folder. Answer it in that pane. Each move is logged in `calls.log` as a `route` entry.
+
 ### Launch from a shell
 
 Running `bin/herdr-claude-code-agent-teams` directly in a herdr pane works the same way; its arguments go to `claude` unchanged. Outside herdr it behaves as plain `claude`.
@@ -114,11 +126,12 @@ These guard against accidents, such as a script that runs `tmux` inside the lead
 - Only calls that carry Claude Code's socket (`-S`) can change panes. Without it, read-only queries (`display-message`, `show-options`, `list-panes` and the like) and the no-op layout commands are answered by this plugin, and everything else goes to the real `tmux` if one is installed, or fails.
 - Commands never close, respawn or type into the team lead's own pane.
 - Unknown flags are rejected instead of guessed.
+- Only the leading `cd` of a launch command that Claude Code sends for a teammate is rewritten, and only to an existing directory. Any process under the lead can register a directory with `route`, the same way it can already drive herdr.
 
 ## Limitations
 
 - Per-teammate border colors and `select-layout` are ignored because herdr has no equivalent.
-- Teammates share one working tree (that is how agent teams work). Do not let them edit the same files.
+- Teammates that start in the same directory share one working tree (that is how agent teams work). Do not let them edit the same files.
 - Agent teams are experimental in Claude Code. A Claude Code update that changes how it drives tmux can break this plugin.
 
 ## Troubleshooting

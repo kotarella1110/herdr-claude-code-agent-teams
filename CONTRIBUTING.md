@@ -37,6 +37,8 @@ cargo test --locked
 shellcheck herdr/install.sh
 ```
 
+CI also scans the whole history for leaked secrets with [gitleaks](https://github.com/gitleaks/gitleaks). To run the same scan locally, install gitleaks and run `gitleaks git --redact .`.
+
 The integration tests in `tests/` drive the real binary against fake `herdr` and `claude` executables, so they need no running herdr. Add a test there when you change how a tmux command is translated.
 
 ## Change files

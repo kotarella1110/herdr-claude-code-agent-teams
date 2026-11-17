@@ -175,6 +175,18 @@ impl Sandbox {
             .unwrap()
     }
 
+    pub(crate) fn launcher_in_a_deleted_directory(&self, envs: &[(&str, &str)]) -> Output {
+        let gone = self.root.join("gone");
+        fs::create_dir_all(&gone).unwrap();
+        self.command(Path::new("/bin/sh"))
+            .args(["-c", r#"cd "$1" && rmdir "$1" && exec "$2" --model sonnet"#, "sh"])
+            .arg(&gone)
+            .arg(binary())
+            .envs(envs.iter().copied())
+            .output()
+            .unwrap()
+    }
+
     pub(crate) fn route(&self, args: &[&str]) -> Output {
         self.route_in(&self.root, args)
     }

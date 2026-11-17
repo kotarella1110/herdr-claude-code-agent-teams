@@ -42,7 +42,7 @@ command = "kotarella1110.claude-code-agent-teams.open"
 | `kotarella1110.claude-code-agent-teams.here` | 選択中のペインでリーダーの Claude を起動する。シェルが入力待ちのペインでなければ起動しない |
 | `kotarella1110.claude-code-agent-teams.configure` | `claude` に渡す引数を、ポップアップのエディタで開く |
 
-起動したリーダーに「エージェントチームを作って、teammate は 2 人まで」のように頼むと、teammate がリーダーの右側に並ぶ。teammate が正常に終了するとペインは閉じ、失敗したときは原因を読めるよう残る。
+起動したリーダーに「エージェントチームを作って、teammate は 2 人まで」のように頼むと、teammate がリーダーの右側に並ぶ。名前を付けないと Claude Code は手伝い役をペインを持たない普通のサブエージェントとして動かすので、プラグインはリーダーに短いシステムプロンプトを付け、手伝い役を名前付きの teammate として起動させる。teammate は作業を終えても続きの依頼を受けられるようにペインで待機し、リーダーが teammate を止めるとペインは閉じる。システムプロンプトで、用が済んだ teammate を止めるようリーダーに伝えている（「チームを片付けて」と頼んでもよい）。teammate が失敗したときは、原因を読めるようペインを残す。
 
 ### claude に渡す引数
 
@@ -58,7 +58,7 @@ Claude Code は teammate を必ずリーダーと同じディレクトリで起�
 2. リーダーのディレクトリの中にある、同じ名前の git リポジトリ
 3. リーダーのディレクトリと同じ階層にある、同じ名前の git リポジトリ
 
-Claude Code が名前の重複を避けて `api-2` のように番号を付けた場合は、番号を除いた名前で探す。シンボリックリンクは実体のパスに解決する。どれにも当たらない teammate は、これまでどおりリーダーと同じディレクトリで起動する。役割名がたまたま近くのリポジトリと同じ teammate（`frontend` サブモジュールの隣にいる `frontend` という名前のレビュー役など）も移動するが、リーダーにはその名前の一覧を伝えるので、避けた名前を付けられる。事前の設定は要らない。リーダーには起動時に、登録のしかたと、名前だけで使える近くのリポジトリを伝えるので、「api と web にまたがって作業して」と頼むだけでよい。いつも同じ場所を使いたいリポジトリは、`CLAUDE.md` に「api は ~/src/my-api にある」のように書いておけば、リーダーがそれを読んで登録する。`--append-system-prompt` か `--append-system-prompt-file` を自分で渡した場合はこの説明を付けないので、`route` を教えない限り、リーダーは近くのリポジトリしか使わない。
+Claude Code が名前の重複を避けて `api-2` のように番号を付けた場合は、番号を除いた名前で探す。シンボリックリンクは実体のパスに解決する。どれにも当たらない teammate は、これまでどおりリーダーと同じディレクトリで起動する。役割名がたまたま近くのリポジトリと同じ teammate（`frontend` サブモジュールの隣にいる `frontend` という名前のレビュー役など）も移動するが、リーダーにはその名前の一覧を伝えるので、避けた名前を付けられる。事前の設定は要らない。リーダーには起動時に、登録のしかたと、名前だけで使える近くのリポジトリを伝えるので、「api と web にまたがって作業して」と頼むだけでよい。いつも同じ場所を使いたいリポジトリは、`CLAUDE.md` に「api は ~/src/my-api にある」のように書いておけば、リーダーがそれを読んで登録する。`--append-system-prompt` か `--append-system-prompt-file` を自分で渡した場合は、この説明も上の teammate の起動の指示も付けないので、teammate に名前を付けることと `route` は自分でリーダーに伝える。
 
 Claude Code で初めて開くディレクトリでは、teammate のペインにフォルダを信頼するかの確認が出るので、そのペインで答える。行き先を変えた記録は `calls.log` に `route` として残る。
 
@@ -69,7 +69,7 @@ herdr のペインで `bin/herdr-claude-code-agent-teams` を直接実行して�
 ## 仕組み
 
 1. 起動時に、本人だけが読める状態ディレクトリ `$XDG_STATE_HOME/herdr-claude-code-agent-teams/<サーバー>/<ペイン>-<pid>/`（`XDG_STATE_HOME` が未設定なら `~/.local/state`、権限 `0700`）を作る。`<サーバー>` は herdr のサーバーを識別する値、`<ペイン>` はペイン ID の `:` を `_` に置き換えたもの。その中の `bin/tmux` を自分自身へのシンボリックリンクにし、このディレクトリを `PATH` の先頭に置く
-2. `TMUX` を状態ディレクトリ内のソケットのパスに向け、`TMUX_PANE=%0` を設定し、`--settings '{"teammateMode":"tmux"}'` を付けて `claude` を起動する
+2. `TMUX` を状態ディレクトリ内のソケットのパスに向け、`TMUX_PANE=%0` を設定し、`--settings '{"teammateMode":"tmux"}'` と、自分で渡していなければ teammate の起動と振り分けの指示を書いた `--append-system-prompt` を付けて `claude` を起動する
 3. Claude Code が `tmux split-window` などを呼ぶと、同じバイナリが tmux として動き、`herdr pane split` などに置き換えて tmux と同じ形式で答える
 
 ```mermaid

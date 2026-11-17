@@ -42,7 +42,7 @@ command = "kotarella1110.claude-code-agent-teams.open"
 | `kotarella1110.claude-code-agent-teams.here` | Starts a team lead Claude in the focused pane. Refuses unless the pane is at a shell prompt |
 | `kotarella1110.claude-code-agent-teams.configure` | Opens the arguments passed to `claude` in your editor, in a popup |
 
-Ask the lead something like "Create an agent team with at most two teammates", and the teammates appear to the right of the lead. A teammate pane closes when the teammate exits cleanly and stays open on failure so you can read the error.
+Ask the lead something like "Create an agent team with at most two teammates", and the teammates appear to the right of the lead. The plugin appends a short system prompt telling the lead to spawn helpers as named teammates; without a name, Claude Code runs a helper as a background subagent that never gets a pane. A teammate stays idle in its pane after finishing a task so it can take follow-up work; the pane closes when the lead stops the teammate (the system prompt asks the lead to do so once a teammate is done, and "clean up the team" also works). A pane whose teammate fails stays open so you can read the error.
 
 ### Arguments for claude
 
@@ -58,7 +58,7 @@ Claude Code starts every teammate in the lead's directory, so a teammate never l
 2. A git repository with that name inside the lead's directory.
 3. A git repository with that name next to the lead's directory.
 
-When Claude Code renames a teammate to avoid a clash, such as `api-2`, the name without the suffix is used. Symbolic links are resolved first. Any other teammate starts in the lead's directory as before. A teammate whose role name happens to match a nearby repository, for example a reviewer called `frontend` next to a `frontend` submodule, is moved there too; the lead is shown those names so it can avoid them. Nothing has to be set up in advance: when the lead starts, it is told how to register a directory and which nearby repositories it can use by name, so asking "work across api and web" is enough. To always use the same place for a repository, write it in `CLAUDE.md`, for example "api lives in ~/src/my-api", and the lead registers it. If you pass your own `--append-system-prompt` or `--append-system-prompt-file`, the plugin adds nothing, so the lead only uses nearby repositories unless told about `route`.
+When Claude Code renames a teammate to avoid a clash, such as `api-2`, the name without the suffix is used. Symbolic links are resolved first. Any other teammate starts in the lead's directory as before. A teammate whose role name happens to match a nearby repository, for example a reviewer called `frontend` next to a `frontend` submodule, is moved there too; the lead is shown those names so it can avoid them. Nothing has to be set up in advance: when the lead starts, it is told how to register a directory and which nearby repositories it can use by name, so asking "work across api and web" is enough. To always use the same place for a repository, write it in `CLAUDE.md`, for example "api lives in ~/src/my-api", and the lead registers it. If you pass your own `--append-system-prompt` or `--append-system-prompt-file`, the plugin adds neither this nor the teammate instruction above, so tell the lead yourself to give each teammate a name and about `route`.
 
 The first time Claude Code opens a directory, the teammate pane asks whether you trust the folder. Answer it in that pane. Each move is logged in `calls.log` as a `route` entry.
 
@@ -69,7 +69,7 @@ Running `bin/herdr-claude-code-agent-teams` directly in a herdr pane works the s
 ## How it works
 
 1. On launch it creates a private state directory, `$XDG_STATE_HOME/herdr-claude-code-agent-teams/<server>/<pane>-<pid>/` (`~/.local/state` when `XDG_STATE_HOME` is unset, mode `0700`), where `<server>` identifies the herdr server and `<pane>` is the pane id with `:` replaced by `_`. Inside it, `bin/tmux` is a symlink to the binary itself, and that directory goes first in `PATH`.
-2. It points `TMUX` at a socket path inside the state directory, sets `TMUX_PANE=%0`, and starts `claude` with `--settings '{"teammateMode":"tmux"}'`.
+2. It points `TMUX` at a socket path inside the state directory, sets `TMUX_PANE=%0`, and starts `claude` with `--settings '{"teammateMode":"tmux"}'` and, unless you pass your own, `--append-system-prompt` with the teammate and routing instructions.
 3. When Claude Code calls `tmux split-window` and friends, the same binary runs as tmux, performs the matching `herdr pane` operation, and answers in tmux's format.
 
 ```mermaid

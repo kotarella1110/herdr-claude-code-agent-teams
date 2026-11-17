@@ -1,0 +1,49 @@
+name: Prepare release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: true
+
+jobs:
+  prepare-release:
+    if: "!startsWith(github.event.head_commit.message, 'chore: prepare release')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find change files
+        id: changes
+        run: |
+          if ls .changeset/*.md >/dev/null 2>&1; then
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install knope from crates.io
+        if: steps.changes.outputs.pending == 'true'
+        run: |
+          rustup toolchain install
+          cargo install knope --version 0.24.0 --locked
+
+      - name: Open the release pull request
+        if: steps.changes.outputs.pending == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          knope prepare-release --verbose

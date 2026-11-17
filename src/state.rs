@@ -20,6 +20,8 @@ pub(crate) struct IdMap {
     pub(crate) map: BTreeMap<String, String>,
     #[serde(default)]
     pub(crate) titles: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(crate) routes: BTreeMap<String, PathBuf>,
 }
 
 impl IdMap {
@@ -29,6 +31,7 @@ impl IdMap {
             next_window: 1,
             map: BTreeMap::from([("%0".into(), pane_id.into()), ("@0".into(), tab_id.into())]),
             titles: BTreeMap::new(),
+            routes: BTreeMap::new(),
         }
     }
 

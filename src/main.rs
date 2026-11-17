@@ -21,6 +21,7 @@ fn main() -> ExitCode {
     match rest.first().map(String::as_str) {
         Some("action") => action::run(),
         Some("edit-config") => action::edit_config(),
+        Some("route") => route::register(&rest[1..]),
         _ => launcher::run(&rest),
     }
 }

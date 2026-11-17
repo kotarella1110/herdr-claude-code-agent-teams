@@ -382,7 +382,8 @@ fn respawn_pane(state: &State, args: &[String]) -> Result<String> {
     let (flags, positional) = parse(args, "c:e:kt:")?;
     let herdr_pane = resolve_team_pane(state, flags.value('t'))?;
     let line = command_line(&positional);
-    let line = match route::reroute(&line) {
+    let registered = state.with_idmap(|idmap| idmap.routes.clone())?;
+    let line = match route::reroute(&line, &registered) {
         Some((rerouted, route)) => {
             state.log(
                 "route",

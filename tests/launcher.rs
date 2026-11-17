@@ -37,7 +37,9 @@ fn inside_herdr_it_starts_claude_as_a_team_lead_behind_the_tmux_shim() {
     assert!(state_dir.starts_with(state_home.join("herdr-claude-code-agent-teams")), "{lines}");
     assert!(state_dir.file_name().unwrap().to_str().unwrap().starts_with("w1_p1-"), "{lines}");
     assert_eq!(mode(&state_dir), 0o700);
-    assert_eq!(value(&lines, "args"), r#"--settings {"teammateMode":"tmux"} --model sonnet"#);
+    let args = value(&lines, "args");
+    assert!(args.starts_with(r#"--settings {"teammateMode":"tmux"} --append-system-prompt "#), "{args}");
+    assert!(args.ends_with(" --model sonnet"), "{args}");
     assert!(value(&lines, "TMUX").starts_with(&format!("{}/tmux.sock,", state_dir.display())), "{lines}");
     assert_eq!(value(&lines, "TMUX_PANE"), "%0");
     assert_eq!(value(&lines, "TEAMS"), "1");
@@ -74,4 +76,24 @@ fn a_state_path_with_a_comma_is_refused() {
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("contains a comma"));
+}
+
+#[test]
+fn the_lead_learns_how_to_choose_where_a_teammate_starts() {
+    let sandbox = Sandbox::new();
+    std::fs::create_dir_all(sandbox.root.join("work/api/.git")).unwrap();
+    let envs = [("HERDR_ENV", "1"), ("HERDR_PANE_ID", "w1:p1")];
+
+    let hinted = stdout(&sandbox.launcher(&envs));
+    let own = stdout(&sandbox.launcher_with_args(&["--append-system-prompt", "mine"], &envs));
+    let own_file = stdout(&sandbox.launcher_with_args(&["--append-system-prompt-file", "/tmp/mine"], &envs));
+
+    let args = value(&hinted, "args");
+    assert!(args.contains(" route <teammate-name> <directory>`"), "{args}");
+    assert!(args.contains("without that step: api."), "{args}");
+    assert_eq!(value(&own, "args"), r#"--settings {"teammateMode":"tmux"} --append-system-prompt mine"#);
+    assert_eq!(
+        value(&own_file, "args"),
+        r#"--settings {"teammateMode":"tmux"} --append-system-prompt-file /tmp/mine"#
+    );
 }

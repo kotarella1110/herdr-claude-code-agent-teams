@@ -157,8 +157,36 @@ impl Sandbox {
         self.shim().args(args).output().unwrap()
     }
 
+    pub(crate) fn lead_dir(&self) -> PathBuf {
+        self.root.join("work/lead")
+    }
+
     pub(crate) fn launcher(&self, envs: &[(&str, &str)]) -> Output {
-        self.command(&binary()).args(["--model", "sonnet"]).envs(envs.iter().copied()).output().unwrap()
+        self.launcher_with_args(&["--model", "sonnet"], envs)
+    }
+
+    pub(crate) fn launcher_with_args(&self, args: &[&str], envs: &[(&str, &str)]) -> Output {
+        fs::create_dir_all(self.lead_dir()).unwrap();
+        self.command(&binary())
+            .current_dir(self.lead_dir())
+            .args(args)
+            .envs(envs.iter().copied())
+            .output()
+            .unwrap()
+    }
+
+    pub(crate) fn route(&self, args: &[&str]) -> Output {
+        self.route_in(&self.root, args)
+    }
+
+    pub(crate) fn route_in(&self, dir: &Path, args: &[&str]) -> Output {
+        self.command(&binary())
+            .current_dir(dir)
+            .arg("route")
+            .args(args)
+            .env("HERDR_CLAUDE_CODE_AGENT_TEAMS_STATE", self.state_dir())
+            .output()
+            .unwrap()
     }
 }
 

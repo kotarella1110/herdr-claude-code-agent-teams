@@ -13,9 +13,11 @@ use rustix::io::Errno;
 use rustix::process::{Pid, test_kill_process};
 
 use crate::herdr;
+use crate::route;
 use crate::state::{self, State};
 
 const TEAMMATE_MODE: &str = r#"{"teammateMode":"tmux"}"#;
+const APPEND_SYSTEM_PROMPT: &str = "--append-system-prompt";
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let error = match herdr_pane() {
@@ -120,6 +122,17 @@ fn tmux_env(state: &State) -> OsString {
     value
 }
 
+fn routing_hint(args: &[String]) -> Vec<String> {
+    if args.iter().any(|arg| arg.starts_with(APPEND_SYSTEM_PROMPT)) {
+        return Vec::new();
+    }
+    let (Ok(lead_dir), Ok(launcher)) = (env::current_dir(), env::current_exe().and_then(fs::canonicalize))
+    else {
+        return Vec::new();
+    };
+    vec![APPEND_SYSTEM_PROMPT.to_owned(), route::hint(&lead_dir, &launcher)]
+}
+
 fn exec_team_lead(state: &State, args: &[String]) -> anyhow::Error {
     let path = match search_path(state.dir()) {
         Ok(path) => path,
@@ -128,6 +141,7 @@ fn exec_team_lead(state: &State, args: &[String]) -> anyhow::Error {
     let error = Command::new("claude")
         .arg("--settings")
         .arg(TEAMMATE_MODE)
+        .args(routing_hint(args))
         .args(args)
         .env("PATH", path)
         .env("TMUX", tmux_env(state))

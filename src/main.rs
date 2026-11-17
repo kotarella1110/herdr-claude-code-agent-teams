@@ -1,3 +1,4 @@
+mod action;
 mod herdr;
 mod launcher;
 mod shell;
@@ -16,5 +17,9 @@ fn main() -> ExitCode {
     if Path::new(&argv0).file_name().is_some_and(|name| name == "tmux") {
         return tmux::run(&rest);
     }
-    launcher::run(&rest)
+    match rest.first().map(String::as_str) {
+        Some("action") => action::run(),
+        Some("edit-config") => action::edit_config(),
+        _ => launcher::run(&rest),
+    }
 }

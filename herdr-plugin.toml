@@ -1,0 +1,35 @@
+id = "kotarella1110.claude-code-agent-teams"
+name = "herdr-claude-code-agent-teams"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "Run Claude Code agent team teammates as herdr panes"
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["sh", "herdr/install.sh"]
+
+[[actions]]
+id = "open"
+title = "agent-teams: start a team lead in a split to the right"
+contexts = ["pane", "workspace"]
+command = ["bin/herdr-claude-code-agent-teams", "action"]
+
+[[actions]]
+id = "here"
+title = "agent-teams: start a team lead in this pane"
+contexts = ["pane"]
+command = ["bin/herdr-claude-code-agent-teams", "action"]
+
+[[actions]]
+id = "configure"
+title = "agent-teams: edit the arguments passed to claude"
+contexts = ["pane", "workspace"]
+command = ["bin/herdr-claude-code-agent-teams", "action"]
+
+[[panes]]
+id = "configure"
+title = "agent-teams: claude arguments"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["bin/herdr-claude-code-agent-teams", "edit-config"]

@@ -1,0 +1,268 @@
+mod support;
+
+use std::fs;
+
+use serde_json::json;
+use support::{LEADER_AND_TEAMMATE, LEADER_ONLY, Sandbox, mode, stderr, stdout};
+
+#[test]
+fn version_answers_like_tmux() {
+    let sandbox = Sandbox::new();
+
+    let output = sandbox.tmux_without_socket(&["-V"]);
+
+    assert!(output.status.success());
+    assert_eq!(stdout(&output), "tmux 3.5a");
+}
+
+#[test]
+fn display_message_expands_the_leader_location() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux_without_socket(&[
+        "display-message",
+        "-p",
+        "-t",
+        "%0",
+        "#{session_name}:#{window_id}.#{pane_id}",
+    ]);
+
+    assert_eq!(stdout(&output), "herdr:@0.%0");
+}
+
+#[test]
+fn display_message_rejects_unknown_windows() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux(&["display-message", "-p", "-t", "@7", "#{pane_id}"]);
+
+    assert!(!output.status.success());
+    assert_eq!(stderr(&output), "can't find window: @7");
+}
+
+#[test]
+fn split_window_in_claude_codes_form_registers_each_new_pane() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+    let split = ["split-window", "-d", "-t", "%0", "-h", "-l", "70%", "-P", "-F", "#{pane_id}", "--", "cat"];
+
+    let first = sandbox.tmux(&split);
+    let second =
+        sandbox.tmux(&["split-window", "-d", "-t", "%1", "-v", "-P", "-F", "#{pane_id}", "--", "cat"]);
+
+    assert_eq!(stdout(&first), "%1");
+    assert_eq!(stdout(&second), "%2");
+    let calls = sandbox.herdr_calls();
+    assert!(calls.contains(&"pane split --pane w1:p1 --direction right --no-focus --ratio 0.30".to_owned()));
+    assert!(calls.contains(&"pane split --pane w1:p2 --direction down --no-focus".to_owned()));
+    assert!(!calls.iter().any(|call| call.starts_with("pane run")));
+    assert_eq!(sandbox.idmap()["map"]["%2"], json!("w1:p3"));
+}
+
+#[test]
+fn respawn_pane_runs_a_private_self_deleting_script_that_closes_the_pane_on_success() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["respawn-pane", "-k", "-t", "%1", "--", "cd /work && env SECRET=1 claude"]);
+
+    assert!(output.status.success(), "{output:?}");
+    let run = sandbox.herdr_calls().into_iter().find(|call| call.starts_with("pane run w1:p2 ")).unwrap();
+    let script = run.trim_start_matches("pane run w1:p2 sh ");
+    assert_eq!(mode(script.as_ref()), 0o600);
+    let body = fs::read_to_string(script).unwrap();
+    assert!(body.starts_with("rm -f -- \"$0\"\nsh -c 'cd /work && env SECRET=1 claude'\n"), "{body}");
+    assert!(body.contains("pane close w1:p2"), "{body}");
+    assert!(!sandbox.calls_log().contains("SECRET"));
+}
+
+#[test]
+fn split_window_closes_the_new_pane_when_the_command_cannot_start() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output =
+        sandbox.tmux_with_env(&["split-window", "-t", "%0", "claude"], &[("FAKE_HERDR_FAIL_RUN", "1")]);
+
+    assert!(!output.status.success());
+    assert!(sandbox.herdr_calls().contains(&"pane close w1:p2".to_owned()));
+    assert_eq!(sandbox.idmap()["map"].get("%1"), None);
+    assert_eq!(sandbox.run_scripts(), Vec::<std::path::PathBuf>::new());
+}
+
+#[test]
+fn list_panes_shows_only_the_team_panes_of_the_tab() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let by_pane = sandbox.tmux(&["list-panes", "-t", "%0", "-F", "#{pane_id}"]);
+    let by_window = sandbox.tmux_without_socket(&["list-panes", "-t", "herdr:@0", "-F", "#{pane_id}"]);
+
+    assert_eq!(stdout(&by_pane), "%0\n%1");
+    assert_eq!(stdout(&by_window), "%0\n%1");
+}
+
+#[test]
+fn select_pane_title_renames_the_herdr_pane() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["select-pane", "-t", "%1", "-T", "alpha"]);
+
+    assert!(output.status.success());
+    assert!(sandbox.herdr_calls().contains(&"pane rename w1:p2 alpha".to_owned()));
+    assert_eq!(sandbox.idmap()["titles"]["w1:p2"], json!("alpha"));
+}
+
+#[test]
+fn kill_pane_closes_the_pane_and_forgets_it() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["kill-pane", "-t", "%1"]);
+
+    assert!(output.status.success());
+    assert!(sandbox.herdr_calls().contains(&"pane close w1:p2".to_owned()));
+    assert_eq!(sandbox.idmap()["map"].get("%1"), None);
+}
+
+#[test]
+fn destructive_verbs_never_touch_the_team_lead() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    for args in
+        [&["kill-pane"][..], &["kill-pane", "-t", "%0"], &["kill-pane", "-t", "@0"], &["send-keys", "x"]]
+    {
+        let output = sandbox.tmux(args);
+        assert!(!output.status.success(), "{args:?}");
+    }
+    assert!(
+        !sandbox.herdr_calls().iter().any(|call| call.contains("w1:p1") && !call.starts_with("pane get"))
+    );
+}
+
+#[test]
+fn send_keys_literal_types_the_text_into_the_target_pane() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["send-keys", "-l", "-t", "%1", "hello world"]);
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(sandbox.herdr_calls().contains(&"pane send-text w1:p2 hello world".to_owned()));
+}
+
+#[test]
+fn capture_pane_reads_the_target_pane_with_boolean_flags_before_the_target() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["capture-pane", "-p", "-e", "-t", "%1"]);
+
+    assert_eq!(stdout(&output), "screen of w1:p2");
+    assert!(!sandbox.calls_log().contains("screen of"));
+}
+
+#[test]
+fn unknown_flags_fail_instead_of_guessing() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["kill-pane", "-z", "-t", "%1"]);
+
+    assert!(!output.status.success());
+    assert_eq!(stderr(&output), "unknown flag -z");
+    assert_eq!(sandbox.herdr_calls(), Vec::<String>::new());
+}
+
+#[test]
+fn unknown_target_fails_like_tmux() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux(&["kill-pane", "-t", "%5"]);
+
+    assert!(!output.status.success());
+    assert_eq!(stderr(&output), "can't find pane: %5");
+}
+
+#[test]
+fn commands_not_from_claude_code_go_to_the_real_tmux_without_the_fake_session() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    for args in [&["kill-pane", "-t", "%1"][..], &["-q", "new-session", "-d"], &["has-session", "-t", "work"]]
+    {
+        sandbox.tmux_without_socket(args);
+    }
+
+    assert_eq!(sandbox.herdr_calls(), Vec::<String>::new());
+    assert_eq!(
+        sandbox.real_tmux_calls(),
+        ["kill-pane -t %1|TMUX=", "-q new-session -d|TMUX=", "has-session -t work|TMUX="]
+    );
+}
+
+#[test]
+fn no_op_verbs_never_reach_the_real_tmux() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux_without_socket(&["set", "-as", "terminal-features", ",*:RGB"]);
+
+    assert!(output.status.success());
+    assert_eq!(sandbox.real_tmux_calls(), Vec::<String>::new());
+}
+
+#[test]
+fn failures_are_logged_without_the_command_or_typed_text() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux_with_env(
+        &["respawn-pane", "-t", "%1", "--", "export AWS_SECRET_ACCESS_KEY=hunter2"],
+        &[("FAKE_HERDR_FAIL_RUN", "1")],
+    );
+
+    assert!(!output.status.success());
+    let log = sandbox.calls_log();
+    assert!(log.contains(r#""message":"herdr pane run failed""#), "{log}");
+    assert!(!log.contains("hunter2"), "{log}");
+}
+
+#[test]
+fn kill_pane_rejects_flags_it_does_not_implement() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TEAMMATE);
+
+    let output = sandbox.tmux(&["kill-pane", "-a", "-t", "%1"]);
+
+    assert_eq!(stderr(&output), "unknown flag -a");
+    assert_eq!(sandbox.herdr_calls(), Vec::<String>::new());
+}
+
+#[test]
+fn unhandled_verbs_from_claude_code_succeed_and_are_logged() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux(&["new-window", "-d"]);
+
+    assert!(output.status.success());
+    let last: serde_json::Value = serde_json::from_str(sandbox.calls_log().lines().last().unwrap()).unwrap();
+    assert_eq!(last["verb"], json!("new-window"));
+    assert_eq!(last["message"], json!("unhandled"));
+}
+
+#[test]
+fn show_options_reports_tmux_features_as_enabled() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    let output = sandbox.tmux_without_socket(&["show", "-Av", "mouse"]);
+
+    assert_eq!(stdout(&output), "on");
+}
+
+#[test]
+fn concurrent_calls_keep_the_log_parseable_and_ids_unique() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    std::thread::scope(|scope| {
+        for _ in 0..12 {
+            scope
+                .spawn(|| sandbox.tmux(&["split-window", "-t", "%0", "-P", "-F", "#{pane_id}", "--", "cat"]));
+        }
+    });
+
+    let log = sandbox.calls_log();
+    let lines: Vec<&str> = log.lines().collect();
+    assert_eq!(lines.len(), 12);
+    assert!(lines.iter().all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()));
+    let map = sandbox.idmap()["map"].as_object().unwrap().clone();
+    assert_eq!(map.keys().filter(|id| id.starts_with('%')).count(), 13);
+}

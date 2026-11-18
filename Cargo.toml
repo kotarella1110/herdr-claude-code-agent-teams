@@ -1,6 +1,6 @@
 [package]
 name = "herdr-claude-code-agent-teams"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.100"
 description = "Run Claude Code agent team teammates as herdr panes."

@@ -106,7 +106,7 @@ sequenceDiagram
     shim->>herdr: pane close w1:p2
 ```
 
-The mapping between tmux pane ids (`%1`, ...) and herdr pane ids is kept in `idmap.json`. A teammate command is written to a private script that deletes itself when it starts, and the pane closes when the teammate exits cleanly.
+The mapping between tmux pane ids (`%1`, ...) and herdr panes is kept in `idmap.json`. herdr gives a pane a new pane id when you move it to another workspace, so each pane is also remembered by its herdr terminal id, and a moved teammate keeps its tmux pane id and title. Moving the lead's own pane to another workspace is not supported: the teammates stay behind and Claude Code loses track of its window. A teammate command is written to a private script that deletes itself when it starts, and the pane closes when the teammate exits cleanly.
 
 | tmux | herdr |
 |---|---|

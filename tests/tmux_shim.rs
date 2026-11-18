@@ -3,7 +3,7 @@ mod support;
 use std::fs;
 
 use serde_json::json;
-use support::{LEADER_AND_TEAMMATE, LEADER_ONLY, Sandbox, mode, stderr, stdout};
+use support::{LEADER_AND_TEAMMATE, LEADER_AND_TRACKED_TEAMMATE, LEADER_ONLY, Sandbox, mode, stderr, stdout};
 
 #[test]
 fn version_answers_like_tmux() {
@@ -192,6 +192,61 @@ fn kill_pane_closes_the_pane_and_forgets_it() {
     assert!(output.status.success());
     assert!(sandbox.herdr_calls().contains(&"pane close w1:p2".to_owned()));
     assert_eq!(sandbox.idmap()["map"].get("%1"), None);
+}
+
+#[test]
+fn kill_pane_closes_a_teammate_pane_the_user_moved_elsewhere_and_forgets_it() {
+    for forgets_old_ids in ["", "1"] {
+        let sandbox = Sandbox::with_idmap(LEADER_AND_TRACKED_TEAMMATE);
+
+        let output = sandbox.tmux_with_env(
+            &["kill-pane", "-t", "%1"],
+            &[("FAKE_HERDR_MOVED", "w1:p2 w2:p1"), ("FAKE_HERDR_FORGETS_OLD_IDS", forgets_old_ids)],
+        );
+
+        assert!(output.status.success(), "{output:?}");
+        let calls = sandbox.herdr_calls();
+        assert!(calls.contains(&"pane close w2:p1".to_owned()), "{calls:?}");
+        assert_eq!(sandbox.idmap()["map"].get("%1"), None, "{forgets_old_ids:?}");
+        assert_eq!(sandbox.idmap()["terminals"].get("%1"), None, "{forgets_old_ids:?}");
+    }
+}
+
+#[test]
+fn kill_pane_forgets_a_teammate_pane_that_already_closed() {
+    for idmap in [LEADER_AND_TEAMMATE, LEADER_AND_TRACKED_TEAMMATE] {
+        let sandbox = Sandbox::with_idmap(idmap);
+
+        let output = sandbox.tmux_with_env(&["kill-pane", "-t", "%1"], &[("FAKE_HERDR_CLOSED", "w1:p2")]);
+
+        assert!(!output.status.success());
+        assert_eq!(sandbox.idmap()["map"].get("%1"), None, "{idmap}");
+        assert!(sandbox.idmap()["map"].get("%0").is_some());
+    }
+}
+
+#[test]
+fn a_moved_teammate_pane_keeps_its_tmux_id_and_title() {
+    let sandbox = Sandbox::with_idmap(LEADER_AND_TRACKED_TEAMMATE);
+
+    let output = sandbox.tmux_with_env(
+        &["display-message", "-p", "-t", "%1", "#{pane_id} #{pane_title}"],
+        &[("FAKE_HERDR_MOVED", "w1:p2 w2:p1")],
+    );
+
+    assert_eq!(stdout(&output), "%1 alpha");
+    assert_eq!(sandbox.idmap()["map"]["%1"], json!("w2:p1"));
+    assert_eq!(sandbox.idmap()["titles"]["w2:p1"], json!("alpha"));
+    assert!(sandbox.calls_log().contains("w1:p2 -> w2:p1"));
+}
+
+#[test]
+fn split_window_remembers_the_terminal_of_the_new_pane() {
+    let sandbox = Sandbox::with_idmap(LEADER_ONLY);
+
+    sandbox.tmux(&["split-window", "-d", "-t", "%0", "-h", "-P", "-F", "#{pane_id}", "--", "cat"]);
+
+    assert_eq!(sandbox.idmap()["terminals"]["%1"], json!("term_w1_p2"));
 }
 
 #[test]

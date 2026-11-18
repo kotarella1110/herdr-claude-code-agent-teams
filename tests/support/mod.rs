@@ -9,17 +9,33 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 const FAKE_HERDR: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_HERDR_LOG"
+terminal_of() {
+  if [ -n "$FAKE_HERDR_MOVED" ] && [ "$1" = "${FAKE_HERDR_MOVED#* }" ]; then
+    set -- "${FAKE_HERDR_MOVED% *}"
+  fi
+  printf 'term_%s' "$1" | tr ':' '_'
+}
 case "$1 $2" in
   "pane get")
-    printf '{"result":{"pane":{"pane_id":"%s","tab_id":"w1:t1","cwd":"/work","focused":false}}}\n' "$3" ;;
+    pane="$3"
+    if [ "$pane" = "$FAKE_HERDR_CLOSED" ]; then echo "pane $pane not found" >&2; exit 1; fi
+    if [ -n "$FAKE_HERDR_MOVED" ] && [ "$pane" = "${FAKE_HERDR_MOVED% *}" ]; then
+      [ -n "$FAKE_HERDR_FORGETS_OLD_IDS" ] && { echo "pane $pane not found" >&2; exit 1; }
+      pane="${FAKE_HERDR_MOVED#* }"
+    fi
+    printf '{"result":{"pane":{"pane_id":"%s","tab_id":"w1:t1","terminal_id":"%s","cwd":"/work","focused":false}}}\n' "$pane" "$(terminal_of "$pane")" ;;
   "pane split")
     while ! mkdir "$FAKE_HERDR_LOG.lock" 2>/dev/null; do sleep 0.01; done
     count=$(($(cat "$FAKE_HERDR_LOG.splits" 2>/dev/null || echo 0) + 1))
     echo "$count" > "$FAKE_HERDR_LOG.splits"
     rmdir "$FAKE_HERDR_LOG.lock"
-    printf '{"result":{"pane":{"pane_id":"w1:p%s","tab_id":"w1:t1"}}}\n' "$((count + 1))" ;;
+    printf '{"result":{"pane":{"pane_id":"w1:p%s","tab_id":"w1:t1","terminal_id":"term_w1_p%s"}}}\n' "$((count + 1))" "$((count + 1))" ;;
   "pane list")
-    printf '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1"},{"pane_id":"w1:p2","tab_id":"w1:t1"},{"pane_id":"w1:p8","tab_id":"w1:t1"},{"pane_id":"w1:p7","tab_id":"w1:t2"}]}}\n' ;;
+    if [ -n "$FAKE_HERDR_MOVED" ]; then
+      printf '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1","terminal_id":"term_w1_p1"},{"pane_id":"%s","tab_id":"w1:t1","terminal_id":"%s"}]}}\n' "${FAKE_HERDR_MOVED#* }" "$(terminal_of "${FAKE_HERDR_MOVED#* }")"
+    else
+      printf '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1"},{"pane_id":"w1:p2","tab_id":"w1:t1"},{"pane_id":"w1:p8","tab_id":"w1:t1"},{"pane_id":"w1:p7","tab_id":"w1:t2"}]}}\n'
+    fi ;;
   "pane read")
     printf '{"result":{"text":"screen of %s"}}\n' "$3" ;;
   "pane run")
@@ -48,6 +64,7 @@ pub(crate) const LEADER_ONLY: &str =
     r#"{"next_pane":1,"next_window":1,"map":{"%0":"w1:p1","@0":"w1:t1"},"titles":{}}"#;
 pub(crate) const LEADER_AND_TEAMMATE: &str =
     r#"{"next_pane":2,"next_window":1,"map":{"%0":"w1:p1","%1":"w1:p2","@0":"w1:t1"},"titles":{}}"#;
+pub(crate) const LEADER_AND_TRACKED_TEAMMATE: &str = r#"{"next_pane":2,"next_window":1,"map":{"%0":"w1:p1","%1":"w1:p2","@0":"w1:t1"},"titles":{"w1:p2":"alpha"},"terminals":{"%0":"term_w1_p1","%1":"term_w1_p2"}}"#;
 
 #[derive(Debug)]
 pub(crate) struct Sandbox {

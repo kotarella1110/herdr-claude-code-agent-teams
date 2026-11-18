@@ -28,6 +28,8 @@ pub(crate) struct Pane {
     pub(crate) focused: bool,
     #[serde(default)]
     pub(crate) agent: Option<String>,
+    #[serde(default)]
+    pub(crate) terminal_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +151,10 @@ pub(crate) fn current_pane() -> Result<Pane> {
 
 pub(crate) fn process_info(pane_id: &str) -> Result<ProcessInfo> {
     result_field(call(&["pane", "process-info", "--pane", pane_id])?, "process_info")
+}
+
+pub(crate) fn all_panes() -> Result<Vec<Pane>> {
+    result_field(call(&["pane", "list"])?, "panes")
 }
 
 pub(crate) fn panes_in_workspace(workspace: &str) -> Result<Vec<Pane>> {

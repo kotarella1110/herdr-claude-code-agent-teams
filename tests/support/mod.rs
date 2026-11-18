@@ -42,6 +42,9 @@ case "$1 $2" in
     fi ;;
   "pane read")
     printf '{"result":{"text":"screen of %s"}}\n' "$3" ;;
+  "pane report-metadata")
+    if [ -n "$FAKE_HERDR_FAIL_REPORT" ]; then echo "report failed" >&2; exit 1; fi
+    printf '{"result":{}}\n' ;;
   "pane run")
     if [ -n "$FAKE_HERDR_FAIL_RUN" ]; then echo "pane run failed" >&2; exit 1; fi
     printf '{"result":{}}\n' ;;

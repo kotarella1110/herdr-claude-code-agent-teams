@@ -12,6 +12,7 @@ use anyhow::{Result, anyhow, bail};
 use crate::herdr::{self, CommandError};
 use crate::route;
 use crate::shell;
+use crate::sidebar;
 use crate::state::{self, State};
 
 const VERSION: &str = "tmux 3.5a";
@@ -423,6 +424,11 @@ fn respawn_pane(state: &State, args: &[String]) -> Result<String> {
         None => line,
     };
     run_in_pane(state, &herdr_pane, &line)?;
+    if let Some(teammate) = route::teammate(&line)
+        && let Err(error) = sidebar::show(&herdr_pane, &teammate)
+    {
+        state.log("report-metadata", flags.value('t'), 1, &loggable(&error));
+    }
     Ok(String::new())
 }
 

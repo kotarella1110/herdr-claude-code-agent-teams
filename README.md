@@ -63,6 +63,23 @@ When Claude Code renames a teammate to avoid a clash, such as `api-2`, the name 
 
 The first time Claude Code opens a directory, the teammate pane asks whether you trust the folder. Answer it in that pane. Each move is logged in `calls.log` as a `route` entry.
 
+### Teammates in the sidebar
+
+When a teammate starts, the plugin reports its name to herdr, so the agent sidebar shows `api` or `reviewer` instead of a row of identical `claude` entries. The name goes away when the teammate exits. The plugin also reports these tokens, which you can put in your own sidebar rows:
+
+| Token | Value |
+|---|---|
+| `$teammate` | The teammate's name |
+| `$team` | The team name |
+| `$model` | The model passed with `--model`, when Claude Code passes one |
+
+Claude Code writes a short summary of what it is doing into the terminal title, and herdr's built-in `terminal_title_stripped` token shows it. To see each Claude's model and current work, add this to herdr's `config.toml`:
+
+```toml
+[ui.sidebar.agents.rows_by_agent]
+claude = [["state_icon", "agent", "$model"], ["terminal_title_stripped"]]
+```
+
 ### Launch from a shell
 
 Running `bin/herdr-claude-code-agent-teams` directly in a herdr pane works the same way; its arguments go to `claude` unchanged. Outside herdr it behaves as plain `claude`.

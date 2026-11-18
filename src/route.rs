@@ -101,7 +101,7 @@ fn parse_launch(line: &str) -> Option<Launch> {
     line[rest_at..].starts_with(" && ").then_some(Launch { cd_at, dir, rest_at })
 }
 
-fn agent_name(command: &str) -> Option<String> {
+fn words(command: &str) -> Option<Vec<String>> {
     let mut words = Vec::new();
     let mut rest = command.trim_start();
     while !rest.is_empty() {
@@ -109,7 +109,35 @@ fn agent_name(command: &str) -> Option<String> {
         words.push(word);
         rest = rest[length..].trim_start();
     }
-    words.windows(2).find(|pair| pair[0] == "--agent-name").map(|pair| pair[1].clone())
+    Some(words)
+}
+
+fn flag_value(words: &[String], flag: &str) -> Option<String> {
+    words.iter().enumerate().find_map(|(index, word)| match word.strip_prefix(flag)? {
+        "" => words.get(index + 1).cloned(),
+        attached => attached.strip_prefix('=').map(str::to_owned),
+    })
+}
+
+fn agent_name(command: &str) -> Option<String> {
+    flag_value(&words(command)?, "--agent-name")
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Teammate {
+    pub(crate) name: String,
+    pub(crate) team: Option<String>,
+    pub(crate) model: Option<String>,
+}
+
+pub(crate) fn teammate(line: &str) -> Option<Teammate> {
+    let launch = parse_launch(line)?;
+    let words = words(&line[launch.rest_at + " && ".len()..])?;
+    Some(Teammate {
+        name: flag_value(&words, "--agent-name")?,
+        team: flag_value(&words, "--team-name"),
+        model: flag_value(&words, "--model"),
+    })
 }
 
 pub(crate) fn reroute(line: &str, registered: &Registered) -> Option<(String, Route)> {
@@ -374,6 +402,27 @@ mod tests {
         assert_eq!(reroute("claude --agent-name api", &nothing_registered()), None);
         assert_eq!(reroute("cd $HOME && claude --agent-name api", &nothing_registered()), None);
         assert_eq!(reroute(&launch(&tree.path("work/api"), "api"), &nothing_registered()), None);
+    }
+
+    #[test]
+    fn teammate_reads_the_name_team_and_model_from_the_launch_line() {
+        let line =
+            format!("{CGROUP_PREFIX}/sys/fs/cgroup/x; {} --model haiku", launch(Path::new("/w"), "api"));
+
+        assert_eq!(
+            teammate(&line),
+            Some(Teammate { name: "api".into(), team: Some("team".into()), model: Some("haiku".into()) })
+        );
+        assert_eq!(
+            teammate("cd /w && claude --agent-name api"),
+            Some(Teammate { name: "api".into(), team: None, model: None })
+        );
+        assert_eq!(
+            teammate("cd /w && claude --agent-name=-x --team-name=-core --model 'opus[1m]'"),
+            Some(Teammate { name: "-x".into(), team: Some("-core".into()), model: Some("opus[1m]".into()) })
+        );
+        assert_eq!(teammate("cd /w && claude --team-name team"), None);
+        assert_eq!(teammate("claude --agent-name api"), None);
     }
 
     #[test]

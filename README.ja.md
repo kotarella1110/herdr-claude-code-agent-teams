@@ -63,6 +63,23 @@ Claude Code が名前の重複を避けて `api-2` のように番号を付け�
 
 Claude Code で初めて開くディレクトリでは、teammate のペインにフォルダを信頼するかの確認が出るので、そのペインで答える。行き先を変えた記録は `calls.log` に `route` として残る。
 
+### サイドバーに teammate を表示する
+
+teammate が起動すると、プラグインはその名前を herdr に伝える。エージェントのサイドバーには同じ `claude` が並ぶ代わりに、`api` や `reviewer` のような名前が出る。名前は teammate が終了すると消える。あわせて次のトークンも伝えるので、サイドバーの行の設定に使える。
+
+| トークン | 値 |
+|---|---|
+| `$teammate` | teammate の名前 |
+| `$team` | チームの名前 |
+| `$model` | `--model` で渡されたモデル（Claude Code が渡した場合だけ） |
+
+Claude Code は今やっている作業の要約をターミナルのタイトルに書き、herdr の組み込みトークン `terminal_title_stripped` でそれを表示できる。各 Claude のモデルと作業内容を出すには、herdr の `config.toml` に次を足す。
+
+```toml
+[ui.sidebar.agents.rows_by_agent]
+claude = [["state_icon", "agent", "$model"], ["terminal_title_stripped"]]
+```
+
 ### シェルから起動する
 
 herdr のペインで `bin/herdr-claude-code-agent-teams` を直接実行しても同じように起動する。引数はそのまま `claude` に渡る。herdr の外で実行した場合は普通の `claude` として動く。

@@ -16,6 +16,10 @@ terminal_of() {
   printf 'term_%s' "$1" | tr ':' '_'
 }
 case "$1 $2" in
+  "--version ")
+    echo "herdr ${FAKE_HERDR_VERSION:-0.9.5}" ;;
+  "integration status")
+    echo "claude: current (v11) (/home/.claude/hooks/herdr-agent-state.sh)" ;;
   "pane get")
     pane="$3"
     if [ "$pane" = "$FAKE_HERDR_CLOSED" ]; then echo "pane $pane not found" >&2; exit 1; fi
@@ -51,6 +55,7 @@ printf '%s|TMUX=%s\n' "$*" "$TMUX" >> "$FAKE_REAL_TMUX_LOG"
 "#;
 
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
+if [ "$1" = --version ]; then echo "2.1.311 (Claude Code)"; exit 0; fi
 printf 'args=%s\n' "$*"
 printf 'TMUX=%s\n' "$TMUX"
 printf 'TMUX_PANE=%s\n' "$TMUX_PANE"
@@ -199,6 +204,15 @@ impl Sandbox {
             .args(["-c", r#"cd "$1" && rmdir "$1" && exec "$2" --model sonnet"#, "sh"])
             .arg(&gone)
             .arg(binary())
+            .envs(envs.iter().copied())
+            .output()
+            .unwrap()
+    }
+
+    pub(crate) fn doctor(&self, envs: &[(&str, &str)]) -> Output {
+        self.command(&binary())
+            .arg("doctor")
+            .env("LANG", "en_US.UTF-8")
             .envs(envs.iter().copied())
             .output()
             .unwrap()

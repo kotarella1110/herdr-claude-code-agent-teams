@@ -48,7 +48,7 @@ fn absolute_env(name: &str) -> Option<PathBuf> {
     env::var_os(name).map(PathBuf::from).filter(|path| path.is_absolute())
 }
 
-fn state_root() -> Result<PathBuf> {
+pub(crate) fn state_root() -> Result<PathBuf> {
     let base = match absolute_env("XDG_STATE_HOME") {
         Some(dir) => dir,
         None => absolute_env("HOME").context("HOME is not an absolute path")?.join(".local/state"),
@@ -56,7 +56,7 @@ fn state_root() -> Result<PathBuf> {
     Ok(base.join("herdr-claude-code-agent-teams"))
 }
 
-fn session_key(socket: Option<&OsStr>) -> String {
+pub(crate) fn session_key(socket: Option<&OsStr>) -> String {
     let hash =
         socket.map_or(&[][..], OsStr::as_bytes).iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, &byte| {
             (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
@@ -109,7 +109,7 @@ fn remove_finished_leads(session_dir: &Path) {
     }
 }
 
-fn is_running(pid: i32) -> bool {
+pub(crate) fn is_running(pid: i32) -> bool {
     let Some(pid) = Pid::from_raw(pid) else {
         return false;
     };

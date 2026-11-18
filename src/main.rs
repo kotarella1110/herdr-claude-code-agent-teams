@@ -1,4 +1,5 @@
 mod action;
+mod doctor;
 mod herdr;
 mod launcher;
 mod route;
@@ -22,6 +23,7 @@ fn main() -> ExitCode {
         Some("action") => action::run(),
         Some("edit-config") => action::edit_config(),
         Some("route") => route::register(&rest[1..]),
+        Some("doctor") => doctor::run(&rest[1..]),
         _ => launcher::run(&rest),
     }
 }

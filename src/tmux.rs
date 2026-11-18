@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, anyhow, bail};
 
-use crate::herdr::{self, HerdrError};
+use crate::herdr::{self, CommandError};
 use crate::route;
 use crate::shell;
 use crate::state::{self, State};
@@ -101,7 +101,7 @@ pub(crate) fn run(argv: &[String]) -> ExitCode {
 }
 
 fn loggable(error: &anyhow::Error) -> String {
-    match error.downcast_ref::<HerdrError>() {
+    match error.downcast_ref::<CommandError>() {
         Some(herdr_error) => {
             let subcommand: Vec<&str> = herdr_error.command.split(' ').take(3).collect();
             format!("{} failed", subcommand.join(" "))
@@ -128,7 +128,7 @@ fn delegate_to_real_tmux(argv: &[String], state: &State, verb: &str) -> ExitCode
     ExitCode::FAILURE
 }
 
-fn real_tmux() -> Option<PathBuf> {
+pub(crate) fn real_tmux() -> Option<PathBuf> {
     let shim = env::current_exe().and_then(fs::canonicalize).ok()?;
     env::split_paths(&env::var_os("PATH")?).map(|dir| dir.join("tmux")).find(|candidate| {
         fs::metadata(candidate)

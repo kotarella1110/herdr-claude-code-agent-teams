@@ -22,7 +22,8 @@ pub(crate) fn run() -> ExitCode {
     let outcome = match env::var("HERDR_PLUGIN_ACTION_ID").as_deref() {
         Ok("open") => open_split(),
         Ok("here") => run_here(),
-        Ok("configure") => open_config_popup(),
+        Ok("configure") => open_popup("configure"),
+        Ok("doctor") => open_popup("doctor"),
         Ok(other) => Err(anyhow!("unknown action: {other}")),
         Err(_) => Err(anyhow!("HERDR_PLUGIN_ACTION_ID is not set")),
     };
@@ -73,9 +74,9 @@ fn prepare_claude_args_file() -> Result<PathBuf> {
     Ok(path)
 }
 
-fn open_config_popup() -> Result<()> {
+fn open_popup(entrypoint: &str) -> Result<()> {
     let plugin = env::var("HERDR_PLUGIN_ID").context("HERDR_PLUGIN_ID is not set")?;
-    herdr::call(&["plugin", "pane", "open", "--plugin", &plugin, "--entrypoint", "configure"])?;
+    herdr::call(&["plugin", "pane", "open", "--plugin", &plugin, "--entrypoint", entrypoint])?;
     Ok(())
 }
 

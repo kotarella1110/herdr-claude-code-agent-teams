@@ -41,6 +41,7 @@ command = "kotarella1110.claude-code-agent-teams.open"
 | `kotarella1110.claude-code-agent-teams.open` | Splits the focused pane to the right and starts a team lead Claude there |
 | `kotarella1110.claude-code-agent-teams.here` | Starts a team lead Claude in the focused pane. Refuses unless the pane is at a shell prompt |
 | `kotarella1110.claude-code-agent-teams.configure` | Opens the arguments passed to `claude` in your editor, in a popup |
+| `kotarella1110.claude-code-agent-teams.doctor` | Checks the setup and lists running leads, in a popup |
 
 Ask the lead something like "Create an agent team with at most two teammates", and the teammates appear to the right of the lead. The plugin appends a short system prompt telling the lead to spawn helpers as named teammates; without a name, Claude Code runs a helper as a background subagent that never gets a pane. A teammate stays idle in its pane after finishing a task so it can take follow-up work; the pane closes when the lead stops the teammate (the system prompt asks the lead to do so once a teammate is done, and "clean up the team" also works). A pane whose teammate fails stays open so you can read the error.
 
@@ -135,6 +136,8 @@ These guard against accidents, such as a script that runs `tmux` inside the lead
 - Agent teams are experimental in Claude Code. A Claude Code update that changes how it drives tmux can break this plugin.
 
 ## Troubleshooting
+
+Start with the `doctor` action, or run `bin/herdr-claude-code-agent-teams doctor` from the plugin directory. It checks the herdr and Claude Code versions, herdr's Claude Code integration, the locale and the state directory, and lists each running lead with its teammate panes, registered routes and any tmux commands it could not handle. It exits with status 1 when a check fails. The popup runs with the herdr server's environment, while leads run in your shell, so when `claude`, the locale or `XDG_STATE_HOME` come from your shell's startup files, run the command in a pane instead. Inside herdr it lists only the leads of the current herdr server.
 
 Each lead logs the tmux commands it receives: the verb, the target, the exit status and any error. Command lines, typed text and screen contents are not logged.
 
